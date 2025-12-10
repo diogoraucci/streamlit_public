@@ -115,7 +115,7 @@ st.set_page_config(layout="wide")
 st.title("📊 Dashboard BTC – Preço e Volatilidade (Binance)")
 
 symbol = "BTCUSDT"
-data_fim =  datetime.today())
+data_fim =  datetime.today()
 btn = st.sidebar.button("Atualizar Dados")
 
 if btn:
