@@ -2,24 +2,28 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import requests
+import time
 from datetime import datetime, timedelta
 import plotly.graph_objects as go
 
-# ============================================================
-# FUNÇÃO SEGURO PARA COLETAR DADOS DA BINANCE
-# ============================================================
+
+# =====================================================================
+# COLETA BINANCE – COMPLETAMENTE PROTEGIDA CONTRA ERROS E RETORNOS VAZIOS
+# =====================================================================
 def cotacao_binance(symbol, interval, start_str, end_str=None):
 
     base_url = "https://api.binance.com/api/v3/klines"
     data = []
-    limit = 1000  
+    limit = 1000
 
     start_time = int(datetime.strptime(start_str, "%Y-%m-%d").timestamp() * 1000)
-    end_time = int(datetime.now().timestamp() * 1000) if end_str is None else int(
-        datetime.strptime(end_str, "%Y-%m-%d").timestamp() * 1000
+    end_ts = (
+        int(datetime.now().timestamp() * 1000)
+        if end_str is None
+        else int(datetime.strptime(end_str, "%Y-%m-%d").timestamp() * 1000)
     )
 
-    while start_time < end_time:
+    while start_time < end_ts:
 
         params = {
             "symbol": symbol,
@@ -28,20 +32,33 @@ def cotacao_binance(symbol, interval, start_str, end_str=None):
             "limit": limit
         }
 
-        # PROTEÇÃO CONTRA ERRO 429 – Too Many Requests
-        for tentativa in range(5):
+        # Proteção contra 429
+        for tentativa in range(6):
             resp = requests.get(base_url, params=params)
             if resp.status_code != 429:
                 break
-            time.sleep(1.5 * (tentativa + 1))
+            time.sleep(1.2 * (tentativa + 1))
 
-        temp_data = resp.json()
+        try:
+            temp_data = resp.json()
+        except:
+            break
 
-        if not temp_data:
+        # Se vier vazio, paramos
+        if not isinstance(temp_data, list) or len(temp_data) == 0:
             break
 
         data.extend(temp_data)
-        start_time = temp_data[-1][6] + 1
+
+        # Proteção contra listas inesperadas
+        try:
+            start_time = temp_data[-1][6] + 1
+        except Exception:
+            break
+
+    # Criação do DataFrame
+    if len(data) == 0:
+        return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
 
     df = pd.DataFrame(data, columns=[
         "timestamp", "open", "high", "low", "close", "volume", "close_time",
@@ -50,32 +67,31 @@ def cotacao_binance(symbol, interval, start_str, end_str=None):
 
     df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
     df.set_index("timestamp", inplace=True)
+
     df = df[["open", "high", "low", "close", "volume"]].astype(float)
 
+    # Ajuste final de período
     if end_str:
-        end_date = pd.to_datetime(end_str) + timedelta(days=1)
-        df = df[(df.index >= pd.to_datetime(start_str)) & (df.index < end_date)]
+        end_limit = pd.to_datetime(end_str) + timedelta(days=1)
+        df = df[(df.index >= pd.to_datetime(start_str)) & (df.index < end_limit)]
 
     return df
 
 
-# ============================================================
-# CÁLCULO COMPLETO DE VOLATILIDADES
-# ============================================================
-def calculos_volatilidade(symbol="BTCUSDT",
-                           start_a="2024-01-01",
-                           start_d="2024-01-01",
-                           start_h="2025-10-01",
-                           end_str=None):
 
-    if end_str is None:
-        end_str = datetime.today().strftime('%Y-%m-%d')
+# =====================================================================
+# CÁLCULO DAS VOLATILIDADES
+# =====================================================================
+def calculos_volatilidade(symbol, end_str):
 
-    df_a = cotacao_binance(symbol, "1d", start_a, end_str)
-    df_d = cotacao_binance(symbol, "1h", start_d, end_str)
-    df_h = cotacao_binance(symbol, "15m", start_h, end_str)
+    df_a = cotacao_binance(symbol, "1d", "2024-01-01", end_str)
+    df_d = cotacao_binance(symbol, "1h", "2024-01-01", end_str)
+    df_h = cotacao_binance(symbol, "15m", "2025-10-01", end_str)
 
-    # Retornos
+    # Se algum DF vier vazio, evita crash
+    if df_a.empty or df_d.empty or df_h.empty:
+        return df_h, df_d, df_a
+
     for df in [df_a, df_d, df_h]:
         df["retornos"] = np.log(df["close"] / df["close"].shift(1))
 
@@ -90,84 +106,89 @@ def calculos_volatilidade(symbol="BTCUSDT",
     return df_h, df_d, df_a
 
 
-# ============================================================
-# STREAMLIT DASHBOARD
-# ============================================================
-st.set_page_config(layout="wide")
-st.title("📊 Dashboard de Volatilidade e Preço — Binance")
 
+# =====================================================================
+# STREAMLIT DASHBOARD
+# =====================================================================
+st.set_page_config(layout="wide")
+
+st.title("📊 Dashboard BTC – Preço e Volatilidade (Binance)")
 
 symbol = st.sidebar.text_input("Ticker", "BTCUSDT")
-end_str = st.sidebar.date_input("Data Final", datetime.today()).strftime("%Y-%m-%d")
+data_fim = st.sidebar.date_input("Data Final", datetime.today())
+btn = st.sidebar.button("Atualizar Dados")
 
-st.sidebar.write("Clique para atualizar:")
-atualizar = st.sidebar.button("Atualizar Dados")
+if btn:
 
-if atualizar:
+    end_str = data_fim.strftime("%Y-%m-%d")
 
-    df_h, df_d, df_a = calculos_volatilidade(symbol=symbol, end_str=end_str)
+    df_h, df_d, df_a = calculos_volatilidade(symbol, end_str)
 
-    # ============================================================
-    # COLUNAS PRINCIPAIS
-    # ============================================================
+    if df_a.empty:
+        st.error("Erro ao carregar dados da Binance. Pode ser período inválido ou símbolo incorreto.")
+        st.stop()
+
+    # ================================
+    # C O L U N A S
+    # ================================
     col_preco, col_vol = st.columns([2, 1])
 
-    # ------------------------------------------------------------
-    # GRÁFICO DE PREÇOS (ESQUERDA)
-    # ------------------------------------------------------------
+
+    # --------------------------
+    # GRÁFICO DE PREÇO (ESQUERDA)
+    # --------------------------
     with col_preco:
 
-        df_a["mm"] = df_a["close"].rolling(60).mean()
+        df_a["mm60"] = df_a["close"].rolling(60).mean()
 
-        ultima_data = df_a.index[-1]
-        ultimo_preco = df_a["close"].iloc[-1]
-
-        fig_preco = go.Figure()
-        fig_preco.add_trace(go.Scatter(
-            x=df_a.index, y=df_a["close"],
-            mode="lines", name="Preço", line=dict(width=2, color="#3399ff")
+        fig_price = go.Figure()
+        fig_price.add_trace(go.Scatter(
+            x=df_a.index,
+            y=df_a["close"],
+            mode="lines",
+            name="Close",
+            line=dict(color="#2ca02c", width=2)
         ))
-        fig_preco.add_trace(go.Scatter(
-            x=df_a.index, y=df_a["mm"],
-            mode="lines", name="MM60", line=dict(width=2, color="#9933ff", dash="dash")
+        fig_price.add_trace(go.Scatter(
+            x=df_a.index,
+            y=df_a["mm60"],
+            mode="lines",
+            name="MM60",
+            line=dict(color="#ff7f0e", width=2, dash="dash")
         ))
 
-        fig_preco.update_layout(
-            title=f"{symbol} — Preço Diário",
-            height=600,
-            margin=dict(l=20, r=20, t=50, b=20),
+        fig_price.update_layout(
+            title=f"{symbol} – Preço Diário",
+            height=650,
             plot_bgcolor="#111",
             paper_bgcolor="#111",
             font_color="white"
         )
 
-        st.plotly_chart(fig_preco, use_container_width=True)
+        st.plotly_chart(fig_price, use_container_width=True)
 
 
-    # ------------------------------------------------------------
-    # GRÁFICOS DE VOLATILIDADE (DIREITA)
-    # ------------------------------------------------------------
+    # --------------------------
+    # VOLATILIDADE (DIREITA)
+    # --------------------------
     with col_vol:
 
         st.subheader("Volatilidades")
 
-        # 1 — Vol Anual
+        # anual
         fig_a = go.Figure()
-        fig_a.add_trace(go.Scatter(x=df_a.index, y=df_a["vol"],
-                                   mode="lines", name="Vol Anual"))
-        fig_a.update_layout(height=200, margin=dict(l=10, r=10, t=40, b=20))
+        fig_a.add_trace(go.Scatter(x=df_a.index, y=df_a["vol"], mode="lines"))
+        fig_a.update_layout(title="Vol Anual", height=200, margin=dict(l=5, r=5, t=30, b=5))
         st.plotly_chart(fig_a, use_container_width=True)
 
-        # 2 — Vol Diária
+        # diária
         fig_d = go.Figure()
-        fig_d.add_trace(go.Scatter(x=df_d.index, y=df_d["vol"],
-                                   mode="lines", name="Vol Diária"))
-        fig_d.update_layout(height=200, margin=dict(l=10, r=10, t=40, b=20))
+        fig_d.add_trace(go.Scatter(x=df_d.index, y=df_d["vol"], mode="lines"))
+        fig_d.update_layout(title="Vol Diária", height=200, margin=dict(l=5, r=5, t=30, b=5))
         st.plotly_chart(fig_d, use_container_width=True)
 
-        # 3 — Vol Horária
+        # horária
         fig_h = go.Figure()
-        fig_h.add_trace(go.Scatter(x=df_h.index, y=df_h["vol"],
-                                   mode="lines", name="Vol Horária"))
-        fig_h.update_layout(height=200, margin=dict(l=10, r=10, t=40, b=20))
+        fig_h.add_trace(go.Scatter(x=df_h.index, y=df_h["vol"], mode="lines"))
+        fig_h.update_layout(title="Vol Horária", height=200, margin=dict(l=5, r=5, t=30, b=5))
         st.plotly_chart(fig_h, use_container_width=True)
