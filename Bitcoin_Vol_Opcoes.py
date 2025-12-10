@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 # =====================================================================
 # COLETA BINANCE – COMPLETAMENTE PROTEGIDA CONTRA ERROS E RETORNOS VAZIOS
 # =====================================================================
-def cotacao_binance(symbol, interval, start_str, end_str=None):
+def cotacao_binance(symbol, interval, '2024-01-01", end_str=None):
 
     base_url = "https://api.binance.com/api/v3/klines"
     data = []
@@ -114,8 +114,8 @@ st.set_page_config(layout="wide")
 
 st.title("📊 Dashboard BTC – Preço e Volatilidade (Binance)")
 
-symbol = st.sidebar.text_input("Ticker", "BTCUSDT")
-data_fim = st.sidebar.date_input("Data Final", datetime.today())
+symbol = "BTCUSDT"
+data_fim =  datetime.today())
 btn = st.sidebar.button("Atualizar Dados")
 
 if btn:
