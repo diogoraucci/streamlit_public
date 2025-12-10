@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 # =====================================================================
 # COLETA BINANCE – COMPLETAMENTE PROTEGIDA CONTRA ERROS E RETORNOS VAZIOS
 # =====================================================================
-def cotacao_binance(symbol, interval, '2024-01-01', end_str=None):
+def cotacao_binance(symbol, interval, start_str ='2024-01-01', end_str=None):
 
     base_url = "https://api.binance.com/api/v3/klines"
     data = []
