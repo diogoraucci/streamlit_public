@@ -29,7 +29,7 @@ def pega_cotacoes_btc():
     # Se Binance falhar, usa Yahoo Finance
     try:
         import yfinance as yf
-        df = yf.download("BTC-USD", period="100d", interval="1d", progress=False)
+        df = yf.download("BTC-USD", period="750", interval="1d", progress=False)
         df = df.reset_index()
         df["data"] = df["Date"].dt.strftime("%d/%m/%Y")
         df = df[["data", "Open", "High", "Low", "Close", "Volume"]]
@@ -58,4 +58,5 @@ st.write("### Últimas 30 cotações diárias do Bitcoin (BTC/USDT)")
 st.dataframe(df.head(30), use_container_width=True, hide_index=True)
 
 st.write(f"**Atualizado em:** {pd.Timestamp.now().strftime('%d/%m/%Y às %H:%M:%S')}")
+
 
