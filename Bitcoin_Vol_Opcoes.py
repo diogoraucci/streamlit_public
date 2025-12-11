@@ -1,17 +1,3 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
-from binance.client import Client
-import plotly.graph_objects as go
-from PIL import Image
-
-# Binance API credentials
-API_KEY = '3sQ5BJpOmEfPLS78NTkt7tYN2RI1lSj4FBRdjFXghgceBSBX3i8lP25bhi6Tc7S8'
-API_SECRET = 'LFsC6guAxeOD5yxIcGMXaU1qFE1qBCGL35bke0ANQazxRIAMHjCFo6NkB4OQOR7k'
-
-# Initialize Binance client
-client = Client(API_KEY, API_SECRET)
-
 # Creating the connection
 import pandas as pd
 import numpy as np
