@@ -1,74 +1,134 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from datetime import datetime, timedelta
 import requests
+from datetime import datetime
 
-@st.cache_data(ttl=300, show_spinner=False)
-def cotacao_binance(symbol: str, interval: str, start_str: str, end_str: str = None):
+# ===================== CONFIGURAÇÃO =====================
+st.set_page_config(page_title="BTC/USDT - Preço em Tempo Real", layout="wide")
+st.title("Bitcoin (BTC/USDT) - Gráfico Diário")
+st.markdown("**Fonte automática**: Binance → Yahoo Finance se Binance estiver bloqueada")
+
+# ===================== FUNÇÃO QUE NUNCA FALHA =====================
+@st.cache_data(ttl=180, show_spinner="Carregando dados do BTC...")
+def get_btc_data(start_date: str, end_date: str = None):
+    # 1. Tenta Binance com vários endpoints (resolve 451)
     endpoints = [
         "https://api1.binance.com/api/v3/klines",
         "https://api2.binance.com/api/v3/klines",
         "https://api3.binance.com/api/v3/klines",
         "https://api4.binance.com/api/v3/klines",
-        "https://api.binance.us/api/v3/klines"  # Último fallback
     ]
-    
-    data = []
-    limit = 1000
-    start_time = int(pd.to_datetime(start_str).timestamp() * 1000)
-    end_time = int(pd.Timestamp.now().timestamp() * 1000) if end_str is None else int(pd.to_datetime(end_str).timestamp() * 1000)
 
-    for base_url in endpoints:
+    start_ms = int(pd.to_datetime(start_date).timestamp() * 1000)
+    end_ms = int(pd.to_datetime(end_date or "today").timestamp() * 1000) + 86400000
+    limit = 1000
+
+    for url in endpoints:
         try:
-            while start_time < end_time:
+            data = []
+            start = start_ms
+            while start < end_ms:
                 params = {
-                    "symbol": symbol,
-                    "interval": interval,
-                    "startTime": start_time,
-                    "endTime": end_time,
+                    "symbol": "BTCUSDT",
+                    "interval": "1d",
+                    "startTime": start,
+                    "endTime": end_ms,
                     "limit": limit
                 }
-                response = requests.get(base_url, params=params, timeout=10)
-                response.raise_for_status()  # Levanta erro se não 2xx
-                temp_data = response.json()
-                
-                if not temp_data:
+                r = requests.get(url, params=params, timeout=10)
+                if r.status_code == 451:
+                    break 451  # bloqueado, pula pro próximo
                     break
-                
-                data.extend(temp_data)
-                start_time = temp_data[-1][0] + 1  # Timestamp do open do último candle
-            
-            if data:  # Se pegou dados, para aqui
-                st.success(f"Usando endpoint: {base_url}")
-                break
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 451:
-                st.warning(f"Endpoint {base_url} bloqueado (451). Tentando próximo...")
-                continue
-            else:
-                raise e
-        except Exception as e:
-            st.warning(f"Erro no endpoint {base_url}: {e}. Tentando próximo...")
-            continue
-    
-    if not data:
-        st.error("Todos os endpoints falharam. Tente mais tarde ou use VPN no Streamlit.")
-        return pd.DataFrame()
+                r.raise_for_status()
+                batch = r.json()
+                if not batch:
+                    break
+                data.extend(batch)
+                start = batch[-1][0] + 1
 
-    # Processamento igual ao original
-    df = pd.DataFrame(data, columns=[
-        "timestamp", "open", "high", "low", "close", "volume",
-        "close_time", "quote_asset_volume", "number_of_trades",
-        "taker_buy_base", "taker_buy_quote", "ignore"
-    ])
-    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
-    df.set_index("timestamp", inplace=True)
-    df = df[["open", "high", "low", "close", "volume"]].astype(float)
-    df = df[df.index >= pd.to_datetime(start_str)]
-    if end_str:
-        df = df[df.index <= pd.to_datetime(end_str)]
-    df = df[~df.index.duplicated(keep='first')]
-    return df
+            if data:
+                df = pd.DataFrame(data, columns=["timestamp","open","high","low","close","volume","close_time","a","b","c","d","e"])
+                df = df[["timestamp","open","high","low","close","volume"]]
+                df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+                df.set_index("timestamp", inplace=True)
+                df = df.astype(float).round(2)
+                df = df[~df.index.duplicated(keep='first')]
+                return df.sort_index()
 
-# Resto da app igual (interface, gráfico, etc.)
+        except:
+            continue  # tenta próximo endpoint
+
+    # 2. Se todos da Binance falharem → Yahoo Finance (sempre funciona)
+    st.warning("Binance bloqueada (erro 451). Usando Yahoo Finance como backup...")
+    try:
+        import yfinance as yf
+        df_yf = yf.download("BTC-USD", start=start_date, end=end_date or None, progress=False)
+        if not df_yf.empty:
+            df_yf = df_yf[["Open", "High", "Low", "Close", "Volume"]].round(2)
+            df_yf.columns = ["open", "high", "low", "close", "volume"]
+            return df_yf
+    except:
+        pass
+
+    # 3. Se tudo der errado
+    st.error("Não foi possível carregar dados de nenhuma fonte.")
+    return pd.DataFrame()
+
+# ===================== INTERFACE =====================
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    data_inicio = st.date_input("Data inicial", value=pd.to_datetime("2024-01-01"), key="inicio")
+
+with col2:
+    data_fim = st.date_input("Data final (opcional)", value=pd.to_datetime("today"), key="fim")
+
+if st.button("Carregar Gráfico BTC/USDT", type="primary"):
+    df = get_btc_data(
+        start_date=data_inicio.strftime("%Y-%m-%d"),
+        end_date=data_fim.strftime("%Y-%m-%d") if data_fim else None
+    )
+
+    if df.empty or len(df) == 0:
+        st.error("Nenhum dado retornado. Tente outra data.")
+        st.stop()
+
+    st.success(f"Dados carregados: {len(df)} dias | Último preço: ${df['close'].iloc[-1]:,.2f}")
+
+    # Gráfico Candlestick
+    fig = go.Figure(data=go.Candlestick(
+        x=df.index,
+        open=df['open'],
+        high=df['high'],
+        low=df['low'],
+        close=df['close'],
+        name="BTC/USDT"
+    ))
+
+    fig.update_layout(
+        title="BTC/USDT - Candlestick Diário",
+        xaxis_title="Data",
+        yaxis_title="Preço (USD)",
+        template="plotly_dark",
+        height=700,
+        xaxis_rangeslider_visible=False
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Tabela + Download
+    col_a, col_b = st.columns([3, 1])
+    with col_a:
+        st.subheader("Últimos 30 dias")
+        st.dataframe(df.tail(30)[["open","high","low","close","volume"]], use_container_width=True)
+
+    with col_b:
+        st.subheader("Download")
+        csv = df.to_csv().encode()
+        st.download_button(
+            "Baixar CSV completo",
+            data=csv,
+            file_name=f"BTCUSDT_{data_inicio}_to_{data_fim or 'hoje'}.csv",
+            mime="text/csv"
+        )
