@@ -85,4 +85,32 @@ symbol = "BTCUSDT"
 interval = "1d"
 start_str = '2024-01-01' #datetime(2024, 1, 1).strftime("%Y-%m-%d")
 end_str = '2025-12-01'#datetime.today().strftime("%Y-%m-%d")
-df = cotacao_binance(symbol, interval, start_str, end_str)
+
+if st.button("Coletar Cotações"):
+    st.write("📡 Coletando dados da Binance...")
+
+    try:
+        
+
+        if df.empty:
+            st.error("Nenhum dado retornado pela Binance.")
+        else:
+            st.success(f"Dados carregados: {len(df)} candles")
+            st.dataframe(df)
+
+    except Exception as e:
+        st.error("Erro durante coleta:")
+    
+        # tipo do erro
+        st.write("### 🟥 Tipo do erro:")
+        st.code(type(e).__name__)
+    
+        # mensagem completa
+        st.write("### 🟧 Mensagem de erro:")
+        st.code(str(e))
+    
+        # traceback completo
+        import traceback
+        st.write("### 📜 Traceback:")
+        st.code("".join(traceback.format_exception(type(e), e, e.__traceback__)))
+
