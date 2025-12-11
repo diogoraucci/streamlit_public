@@ -1,186 +1,105 @@
-import streamlit as st
 import pandas as pd
 import numpy as np
-from binance.client import Client
-import plotly.graph_objects as go
+import yfinance as yf
+from statsmodels.tsa.arima.model import ARIMA
+from sklearn.metrics import mean_squared_error
+import matplotlib.pyplot as plt
+from itertools import product
+import warnings
+import streamlit as st
 from PIL import Image
 
-# Binance API credentials
-API_KEY = ''
-API_SECRET = ''
+# Ignore warnings
+warnings.filterwarnings("ignore")
 
-# Initialize Binance client
-client = Client(API_KEY, API_SECRET)
-
-def get_historical_klines(symbol, interval, lookback):
-    """
-    Fetch historical klines (candlestick) data from Binance.
-
-    :param symbol: Trading pair symbol (e.g., 'BTCUSDT')
-    :param interval: Timeframe for candlesticks (e.g., '1h', '1d')
-    :param lookback: Lookback period (e.g., '1 day ago UTC')
-    :return: Pandas DataFrame with OHLCV data
-    """
-    try:
-        klines = client.get_historical_klines(symbol, interval, lookback)
-        df = pd.DataFrame(klines, columns=[
-            'timestamp', 'open', 'high', 'low', 'close', 'volume', 
-            'close_time', 'quote_asset_volume', 'number_of_trades', 
-            'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'
-        ])
-        df = df[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-        df.set_index('timestamp', inplace=True)
-        df = df.astype(float)
-        return df
-    except Exception as e:
-        raise Exception(f"Error fetching data: {e}")
-
-def add_ema(df, periods=[20, 50, 100, 200]):
-    """
-    Add Exponential Moving Averages (EMAs) to the DataFrame.
-
-    :param df: DataFrame with price data
-    :param periods: List of periods for EMAs
-    :return: DataFrame with added EMA columns
-    """
-    for period in periods:
-        df[f'EMA_{period}'] = df['close'].ewm(span=period, adjust=False).mean()
-    return df
-
-def plot_data_with_ema(df):
-    """
-    Create an interactive Plotly plot with candlestick data and EMAs.
-
-    :param df: DataFrame with price and EMA data
-    """
-    fig = go.Figure()
-
-    # Add candlestick chart
-    fig.add_trace(go.Candlestick(
-        x=df.index,
-        open=df['open'],
-        high=df['high'],
-        low=df['low'],
-        close=df['close'],
-        name='Candlesticks'
-    ))
-
-    # Add EMAs
-    for ema_period in [20, 50, 100, 200]:
-        fig.add_trace(go.Scatter(
-            x=df.index,
-            y=df[f'EMA_{ema_period}'],
-            mode='lines',
-            name=f'EMA {ema_period}'
-        ))
-
-    # Customize layout
-    fig.update_layout(
-        title="Candlestick Chart with EMAs",
-        xaxis_title="Time",
-        yaxis_title="Price",
-        xaxis_rangeslider_visible=False
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-# Streamlit layout
+# Streamlit configuration
 st.set_page_config(layout="wide")
+st.markdown("<style>.main {padding-top: 0px;}</style>", unsafe_allow_html=True)
 
-# Sidebar setup
-st.sidebar.title("Binance Data")
-image_sidebar = Image.open("Pic1.png")  # Sidebar image
-st.sidebar.image(image_sidebar, use_column_width=True)
+# Add images
+st.sidebar.image("Pic1.png", use_column_width=True)
+st.image("Pic2.png", use_column_width=True)
 
-symbol = st.sidebar.text_input("Symbol", "BTCUSDT")
-interval = st.sidebar.selectbox("Interval", options=["1m", "5m", "15m", "1h", "4h", "1d"], index=3)
-lookback = st.sidebar.text_input("Lookback", "1 day ago UTC")
+# Add main title
+st.markdown("<h1 style='text-align: center; margin-top: -20px;'>ARIMA Forecasting Model</h1>", unsafe_allow_html=True)
 
-# Main page setup
-image_main = Image.open("Pic2.png")  # Main page image
-st.image(image_main, use_column_width=True)
+# Sidebar inputs
+st.sidebar.header("Model Parameters")
+crypto_symbol = st.sidebar.text_input("Cryptocurrency Symbol", "BTC-USD")
+prediction_ahead = st.sidebar.number_input("Prediction Days Ahead", min_value=1, max_value=30, value=15, step=1)
+if st.sidebar.button("Predict"):
 
-# Remove extra space at the top
-st.markdown("<style> .css-18e3th9 { padding-top: 0; } </style>", unsafe_allow_html=True)
+    # Step 1: Pull crypto data for the last 3 months
+    btc_data = yf.download(crypto_symbol, period='3mo', interval='1d')
+    btc_data = btc_data[['Close']].dropna()
 
-# Fetch and process data
-try:
-    df = get_historical_klines(symbol, interval, lookback)
-    df = add_ema(df)
+    # Prepare train-test split (80% train, 20% test)
+    train_size = int(len(btc_data) * 0.8)
+    train, test = btc_data[:train_size], btc_data[train_size:]
 
-    # Main Title
-    st.markdown("<h1 style='text-align: center; margin-bottom: 30px;'>Binance API Analysis</h1>", unsafe_allow_html=True)
+    # Step 2: ARIMA model tuning
+    p_values = range(0, 4)  # Define the range for ARIMA(p,d,q)
+    d_values = range(0, 2)
+    q_values = range(0, 4)
 
-    # Get current symbol price and latest EMAs
-    current_price = df['close'].iloc[-1]
-    ema_20 = df['EMA_20'].iloc[-1]
-    ema_50 = df['EMA_50'].iloc[-1]
-    ema_100 = df['EMA_100'].iloc[-1]
-    ema_200 = df['EMA_200'].iloc[-1]
+    def evaluate_arima_model(train, test, arima_order):
+        try:
+            model = ARIMA(train, order=arima_order)
+            model_fit = model.fit()
+            predictions = model_fit.forecast(steps=len(test))
+            mse = mean_squared_error(test, predictions)
+            return mse, model_fit
+        except:
+            return float('inf'), None
 
-    # Display metrics in columns
-    col1, col2, col3, col4, col5 = st.columns(5)
+    results = []
+    for p, d, q in product(p_values, d_values, q_values):
+        arima_order = (p, d, q)
+        mse, model_fit = evaluate_arima_model(train['Close'], test['Close'], arima_order)
+        results.append((arima_order, mse, model_fit))
 
-    with col1:
-        st.markdown(
-            f"""
-            <div style="background-color: #d4edda; padding: 10px; border-radius: 5px; text-align: center;">
-                <h3>Current Price</h3>
-                <p style="font-size: 24px; font-weight: bold;">${current_price:,.6f}</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    # Select the best model
+    best_order, best_mse, best_model = min(results, key=lambda x: x[1])
+    forecast = best_model.forecast(steps=len(test) + prediction_ahead)
 
+    # Latest close price and last predicted price
+    latest_close_price = float(btc_data['Close'].iloc[-1])
+    last_predicted_price = float(forecast[-1])
+
+    # Centered layout for metrics
+    col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown(
             f"""
-            <div style="background-color: #f8f9fa; padding: 10px; border-radius: 5px; text-align: center;">
-                <h3>EMA 20</h3>
-                <p style="font-size: 24px; font-weight: bold;">${ema_20:,.6f}</p>
+            <div style="display: flex; justify-content: space-around;">
+                <div style="background-color: #d5f5d5; color: black; padding: 10px; border-radius: 10px; text-align: center;">
+                    <h3>Latest Close Price</h3>
+                    <p style="font-size: 20px;">${latest_close_price:,.2f}</p>
+                </div>
+                <div style="background-color: #d5f5d5; color: black; padding: 10px; border-radius: 10px; text-align: center;">
+                    <h3>Price After {prediction_ahead} Days</h3>
+                    <p style="font-size: 20px;">${last_predicted_price:,.2f}</p>
+                </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    with col3:
-        st.markdown(
-            f"""
-            <div style="background-color: #f8f9fa; padding: 10px; border-radius: 5px; text-align: center;">
-                <h3>EMA 50</h3>
-                <p style="font-size: 24px; font-weight: bold;">${ema_50:,.6f}</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    # Plot the results
+    plt.figure(figsize=(14, 5))  # Adjusted height to make the plot shorter
+    plt.plot(btc_data.index, btc_data['Close'], label='Actual', color='blue')
+    plt.axvline(x=btc_data.index[train_size], color='gray', linestyle='--', label='Train/Test Split')
 
-    with col4:
-        st.markdown(
-            f"""
-            <div style="background-color: #f8f9fa; padding: 10px; border-radius: 5px; text-align: center;">
-                <h3>EMA 100</h3>
-                <p style="font-size: 24px; font-weight: bold;">${ema_100:,.6f}</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    # Train/Test and Predictions
+    plt.plot(train.index, train['Close'], label='Train Data', color='green')
+    plt.plot(test.index, forecast[:len(test)], label='Test Predictions', color='orange')
 
-    with col5:
-        st.markdown(
-            f"""
-            <div style="background-color: #f8f9fa; padding: 10px; border-radius: 5px; text-align: center;">
-                <h3>EMA 200</h3>
-                <p style="font-size: 24px; font-weight: bold;">${ema_200:,.6f}</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    # Future Predictions
+    future_index = pd.date_range(start=test.index[-1], periods=prediction_ahead + 1, freq='D')[1:]
+    plt.plot(future_index, forecast[len(test):], label=f'{prediction_ahead}-Day Forecast', color='red')
 
-    # Plot chart below metrics
-    plot_data_with_ema(df)
-
-except Exception as e:
-    st.error(f"Error: {e}")
-
-# Streamlit run Binance_EMAs.py
+    plt.title(f'{crypto_symbol} ARIMA Model Predictions')
+    plt.xlabel('Date')
+    plt.ylabel('Price (USD)')
+    plt.legend()
+    st.pyplot(plt)
