@@ -103,5 +103,18 @@ if st.button("Coletar Cotações"):
             st.dataframe(df)
 
     except Exception as e:
-        st.error(f"Erro durante coleta:")
+        st.error("Erro durante coleta:")
+    
+        # tipo do erro
+        st.write("### 🟥 Tipo do erro:")
+        st.code(type(e).__name__)
+    
+        # mensagem completa
+        st.write("### 🟧 Mensagem de erro:")
         st.code(str(e))
+    
+        # traceback completo
+        import traceback
+        st.write("### 📜 Traceback:")
+        st.code("".join(traceback.format_exception(type(e), e, e.__traceback__)))
+
