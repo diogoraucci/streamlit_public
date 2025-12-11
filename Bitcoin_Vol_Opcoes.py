@@ -85,13 +85,10 @@ symbol = "BTCUSDT"
 
 interval = "1d"
 
-col1, col2 = st.columns(2)
 
-with col1:
-    start_str = st.date_input("Data inicial", datetime(2024, 1, 1)).strftime("%Y-%m-%d")
+start_str = '2024-01-01' #datetime(2024, 1, 1).strftime("%Y-%m-%d")
 
-with col2:
-    end_str = st.date_input("Data final", datetime.today()).strftime("%Y-%m-%d")
+end_str = '2025-12-01'#datetime.today().strftime("%Y-%m-%d")
 
 if st.button("Coletar Cotações"):
     st.write("📡 Coletando dados da Binance...")
