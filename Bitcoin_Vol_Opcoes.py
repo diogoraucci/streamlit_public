@@ -28,8 +28,8 @@ st.set_page_config(page_title="Coleta BTC Binance", layout="wide")
 # API_KEY = "sua_chave_aqui"
 # API_SECRET = "sua_chave_aqui"
 try:
-    api_key = st.secrets["API_KEY"]
-    api_secret = st.secrets["API_SECRET"]
+    api_key = st.secrets[api_key]
+    api_secret = st.secrets[api_secret]
 except KeyError:
     st.error("⚠️ Chaves da Binance não encontradas. Configure o st.secrets corretamente.")
     st.stop()
