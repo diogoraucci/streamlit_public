@@ -12,7 +12,7 @@ def pega_cotacoes_btc():
     for i in range(1, 5):
         try:
             url = f"https://api{i}.binance.com/api/v3/klines"
-            params = {"symbol": "BTCUSDT", "interval": "1d", "limit": 100}
+            params = {"symbol": "BTCUSDT", "interval": "1d", "limit": 365}
             r = requests.get(url, params=params, timeout=8)
             if r.status_code == 200:
                 dados = r.json()
@@ -58,3 +58,4 @@ st.write("### Últimas 30 cotações diárias do Bitcoin (BTC/USDT)")
 st.dataframe(df.head(30), use_container_width=True, hide_index=True)
 
 st.write(f"**Atualizado em:** {pd.Timestamp.now().strftime('%d/%m/%Y às %H:%M:%S')}")
+
