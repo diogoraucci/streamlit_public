@@ -40,16 +40,7 @@ def pega_cotacoes_btc():
     except:
         pass
 
-    # Último recurso: tabela fake pra não dar tela branca
-    datas = pd.date_range("2024-09-01", periods=30).strftime("%d/%m/%Y")[::-1]
-    return pd.DataFrame({
-        "data": datas,
-        "open": [68000 + i*100 for i in range(30)],
-        "high": [68500 + i*100 for i in range(30)],
-        "low": [67500 + i*100 for i in range(30)],
-        "close": [68200 + i*150 for i in range(30)],
-        "volume": [25000 + i*1000 for i in range(30)]
-    })
+
 
 # MOSTRA A TABELA NA TELA
 df = pega_cotacoes_btc()
@@ -58,5 +49,6 @@ st.write("### Últimas 30 cotações diárias do Bitcoin (BTC/USDT)")
 st.dataframe(df.head(30), use_container_width=True, hide_index=True)
 
 st.write(f"**Atualizado em:** {pd.Timestamp.now().strftime('%d/%m/%Y às %H:%M:%S')}")
+
 
 
