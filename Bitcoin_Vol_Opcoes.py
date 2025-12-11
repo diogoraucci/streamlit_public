@@ -29,7 +29,7 @@ def pega_cotacoes_btc():
     # Se Binance falhar, usa Yahoo Finance
     try:
         import yfinance as yf
-        df = yf.download("BTC-USD", period="750", interval="1d", progress=False)
+        df = yf.download("BTC-USD", period="750d", interval="1d", progress=False)
         df = df.reset_index()
         df["data"] = df["Date"].dt.strftime("%d/%m/%Y")
         df = df[["data", "Open", "High", "Low", "Close", "Volume"]]
